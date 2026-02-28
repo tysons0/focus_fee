@@ -21,8 +21,9 @@ const state: SessionState = {       //initial state of session
   lastCheck: Date.now(),
 };
 
-// Debounce: require 2 consecutive ticks of same state to avoid flickering
+// Debounce: require 3 consecutive ticks of same state to avoid flickering
 let lastRawDistracted: boolean | null = null;
+let sameCount = 0;
 let displayedDistracted = false;
 
 async function createWindow() {         //creates the desktop window and loads the React app
@@ -85,9 +86,22 @@ setInterval(async () => {
     const isOwnApp = win?.owner?.name?.toLowerCase().includes('electron') || (win?.title || '').toLowerCase().includes('focus fee');
     const rawDistracted = blacklistAppIsOpen && activeMatches && !isOwnApp;
 
-    // Debounce: only switch state after 2 consecutive same ticks
-    if (lastRawDistracted === null || lastRawDistracted === rawDistracted) {
-      displayedDistracted = rawDistracted;
+    // Debug: log every ~15 sec (10 ticks) to avoid spam
+    if (Math.floor(now / 15000) !== Math.floor((now - 1500) / 15000)) {
+      console.log('[Focus Fee] Blacklist:', state.blacklist);
+      console.log('[Focus Fee] Active window:', win?.title || '(none)', '| Owner:', win?.owner?.name || '(none)');
+      console.log('[Focus Fee] blacklistAppIsOpen:', blacklistAppIsOpen, '| activeMatches:', activeMatches, '| isOwnApp:', isOwnApp, '| distracted:', rawDistracted);
+    }
+
+    // Debounce: only switch state after 3 consecutive same ticks
+    if (lastRawDistracted === rawDistracted) {
+      sameCount++;
+      if (sameCount >= 3 || lastRawDistracted === null) {
+        displayedDistracted = rawDistracted;
+      }
+    } else {
+      sameCount = 1;
+      if (lastRawDistracted === null) displayedDistracted = rawDistracted;
     }
     lastRawDistracted = rawDistracted;
 
@@ -100,6 +114,7 @@ setInterval(async () => {
       distracted: displayedDistracted,
       centsOwed: state.centsOwed,
       activeTitle: win?.title || '',
+      blacklist: state.blacklist,
     });
   } catch (e) {
     // swallow errors to keep loop alive
@@ -114,7 +129,9 @@ ipcMain.handle('session:start', (_e, payload: { blacklist: string[]; feePerMin: 
   state.lastCheck = Date.now();
   state.running = true;
   lastRawDistracted = null;
+  sameCount = 0;
   displayedDistracted = false;
+  console.log('[Focus Fee] Blacklist:', state.blacklist);
   return { ok: true };
 });
 

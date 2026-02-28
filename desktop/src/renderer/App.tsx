@@ -10,6 +10,7 @@ type TickPayload = {
   distracted: boolean;
   centsOwed: number;
   activeTitle: string;
+  blacklist?: string[];
 };
 
 declare global {
@@ -135,6 +136,7 @@ export default function App() {
   const [addFundsToast, setAddFundsToast] = useState<string | null>(null);
   const [paymentModal, setPaymentModal] = useState<string | null>(null);
   const [sessionRunning, setSessionRunning] = useState(false);
+  const [displayBlacklist, setDisplayBlacklist] = useState<string[]>([]);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
@@ -154,6 +156,7 @@ export default function App() {
       setDistracted(d.distracted);
       setCents(d.centsOwed);
       setActiveTitle(d.activeTitle);
+      if (d.blacklist) setDisplayBlacklist(d.blacklist);
     });
   }, []);
 
@@ -307,9 +310,16 @@ export default function App() {
 
             <div style={{ ...styles.card, marginTop: 20 }}>
               {sessionRunning && (
-                <div style={{ fontSize: 28, fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginBottom: 16 }}>
-                  {Math.floor(elapsedSeconds / 60)}:{(elapsedSeconds % 60).toString().padStart(2, '0')}
-                </div>
+                <>
+                  <div style={{ fontSize: 28, fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginBottom: 16 }}>
+                    {Math.floor(elapsedSeconds / 60)}:{(elapsedSeconds % 60).toString().padStart(2, '0')}
+                  </div>
+                  {displayBlacklist.length > 0 && (
+                    <div style={{ marginBottom: 16, fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>
+                      Blacklist: {displayBlacklist.join(', ')}
+                    </div>
+                  )}
+                </>
               )}
               <div>Active window: <b>{activeTitle || '—'}</b></div>
               <div style={{ marginTop: 16 }}>Status: {distracted ? '🚫 Unfocused' : '✅ Focused'}</div>

@@ -12,15 +12,15 @@ if (typeof window !== 'undefined' && !(window as any).focusFee) {
     const now = Date.now();
     const elapsedMin = (now - lastTick) / 60000;
     lastTick = now;
-    // Simulate: alternate distracted every few ticks for demo
-    const distracted = running && Math.floor(now / 4500) % 2 === 0;
+    // Browser cannot detect other windows — always show focused. Use desktop app for real detection.
+    const distracted = false;
     if (distracted) {
       centsOwed += Math.ceil(elapsedMin * feePerMin * 100);
     }
     const payload = {
       distracted,
       centsOwed,
-      activeTitle: running ? (distracted ? 'Browser (simulated unfocused)' : 'Browser (simulated focused)') : '—'
+      activeTitle: running ? 'Browser (use desktop app for real window detection)' : '—'
     };
     callbacks.forEach(cb => cb(payload));
   };
