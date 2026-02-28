@@ -10,16 +10,20 @@ type SessionState = {       // state of the current focus session
   running: boolean;
   blacklist: string[];
   centsOwed: number;
-  feePerMin: number; // $/minute, e.g. 0.5
+  feePerMin: number; // $/minute, e.g. 0.25
   lastCheck: number;
 };
 const state: SessionState = {       //initial state of session
   running: false,
   blacklist: ['youtube', 'twitter', 'instagram', 'steam'],
   centsOwed: 0,
-  feePerMin: 0.5,
+  feePerMin: 0.25,
   lastCheck: Date.now(),
 };
+
+// Debounce: require 2 consecutive ticks of same state to avoid flickering
+let lastRawDistracted: boolean | null = null;
+let displayedDistracted = false;
 
 async function createWindow() {         //creates the desktop window and loads the React app
   mainWindow = new BrowserWindow({
@@ -56,23 +60,44 @@ app.on('activate', () => {                  //macOS behavior: re-create window w
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-// Monitoring loop
+// Helper: does a window match any blacklist term? (title or app name)
+function windowMatchesBlacklist(win: { title?: string; owner?: { name?: string } } | null | undefined, blacklist: string[]): boolean {
+  if (!win) return false;
+  const title = (win.title || '').toLowerCase();
+  const ownerName = (win.owner?.name || '').toLowerCase();
+  return blacklist.some(b => title.includes(b) || ownerName.includes(b));
+}
+
+// Use getOpenWindows only (front-to-back order) — single source of truth avoids race with activeWin()
+// Debounce: require 2 consecutive ticks of same state to prevent flickering
 setInterval(async () => {
   if (!state.running || !mainWindow) return;
-  try {                             //checks active window title against blacklist every 1.5 seconds.
-    const win = await activeWin();
-    const title = (win?.title || '').toLowerCase();
-    const now = Date.now();
-    const elapsedMin = (now - state.lastCheck) / 60000;         // calculate elapsed time in minutes since last check
-    const distracted = state.blacklist.some(b => title.includes(b));
+  try {
+    const openWindows = await (activeWin.getOpenWindows?.() ?? Promise.resolve([]));
+    const win = Array.isArray(openWindows) && openWindows.length > 0 ? openWindows[0] : null;
 
-    if (distracted) {                       //if offtask, update cents owed based on elapsed time and fee per minute
+    const now = Date.now();
+    const elapsedMin = (now - state.lastCheck) / 60000;
+
+    // Fees ONLY when BOTH: (1) a blacklisted app is open, AND (2) you're focused on it
+    const blacklistAppIsOpen = Array.isArray(openWindows) && openWindows.some((w: any) => windowMatchesBlacklist(w, state.blacklist));
+    const activeMatches = windowMatchesBlacklist(win, state.blacklist);
+    const isOwnApp = win?.owner?.name?.toLowerCase().includes('electron') || (win?.title || '').toLowerCase().includes('focus fee');
+    const rawDistracted = blacklistAppIsOpen && activeMatches && !isOwnApp;
+
+    // Debounce: only switch state after 2 consecutive same ticks
+    if (lastRawDistracted === null || lastRawDistracted === rawDistracted) {
+      displayedDistracted = rawDistracted;
+    }
+    lastRawDistracted = rawDistracted;
+
+    if (displayedDistracted) {
       state.centsOwed += Math.ceil(elapsedMin * state.feePerMin * 100);
     }
     state.lastCheck = now;
 
-    mainWindow.webContents.send('tick', {           //send tick event to renderer with updated data
-      distracted,
+    mainWindow.webContents.send('tick', {
+      distracted: displayedDistracted,
       centsOwed: state.centsOwed,
       activeTitle: win?.title || '',
     });
@@ -88,6 +113,8 @@ ipcMain.handle('session:start', (_e, payload: { blacklist: string[]; feePerMin: 
   state.centsOwed = 0;
   state.lastCheck = Date.now();
   state.running = true;
+  lastRawDistracted = null;
+  displayedDistracted = false;
   return { ok: true };
 });
 

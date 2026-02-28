@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n VITE,ESBUILD,ELECTRON -c blue,magenta,green \"vite\" \"node scripts/build-electron-watch.mjs\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER=true VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "dev:web": "vite",
     "build:renderer": "vite build",
     "build:electron": "node scripts/build-electron.mjs",
     "build": "npm run build:renderer && npm run build:electron",
