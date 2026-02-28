@@ -37,3 +37,22 @@ a:hover {
 input, select, button {
   font-family: inherit;
 }
+
+input:focus, select:focus {
+  outline: none;
+  border-color: rgba(61, 255, 195, 0.4) !important;
+}
+
+button:hover:not(:disabled) {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button:active {
+  transform: translateY(0);
+}

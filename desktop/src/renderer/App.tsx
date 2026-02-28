@@ -1,5 +1,5 @@
 // UI with Solana theme, tabs, and payment setup
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 
 const BACKEND = (import.meta.env.VITE_BACKEND_URL as string) ?? (import.meta.env.DEV ? '' : 'http://localhost:3000');
@@ -10,113 +10,133 @@ type TickPayload = {
   distracted: boolean;
   centsOwed: number;
   activeTitle: string;
+  activeTitles?: string[];
+  activeOwner?: string;
   blacklist?: string[];
+  paused?: boolean;
 };
 
 declare global {
   interface Window {
     focusFee: {
       start: (p: { blacklist: string[]; feePerMin: number }) => Promise<{ ok: boolean }>;
+      pause: () => Promise<{ ok: boolean }>;
+      resume: () => Promise<{ ok: boolean }>;
       stop: () => Promise<{ centsOwed: number }>;
       onTick: (cb: (d: TickPayload) => void) => void;
     };
   }
 }
 
+const TOTAL_EARNINGS_KEY = 'focusFee_totalEarningsCents';
+
 const styles = {
   app: {
     minHeight: '100vh',
-    background: '#1A1A1A',
+    background: 'linear-gradient(180deg, #0f0f0f 0%, #1a1a1a 50%, #141414 100%)',
     color: '#FFFFFF',
     fontFamily: "'DM Sans', system-ui, sans-serif",
   },
   header: {
-    padding: '20px 24px',
-    borderBottom: '1px solid #333',
+    padding: '16px 32px',
+    borderBottom: '1px solid rgba(255,255,255,0.06)',
     display: 'flex' as const,
     alignItems: 'center' as const,
-    gap: 24,
+    gap: 32,
+    background: 'rgba(0,0,0,0.3)',
+    backdropFilter: 'blur(12px)',
   },
   logo: {
-    fontSize: 24,
-    fontWeight: 700,
-    letterSpacing: '0.02em',
-    background: 'linear-gradient(135deg, #3DFFC3 0%, #A64EEB 100%)',
-    WebkitBackgroundClip: 'text' as const,
-    WebkitTextFillColor: 'transparent' as const,
-    backgroundClip: 'text' as const,
+    height: 72,
+    objectFit: 'contain' as const,
   },
   tabs: {
     display: 'flex' as const,
-    gap: 8,
+    gap: 4,
   },
   tab: (active: boolean) => ({
     padding: '10px 20px',
-    background: active ? 'rgba(61, 255, 195, 0.15)' : 'transparent',
-    border: active ? '1px solid #3DFFC3' : '1px solid transparent',
-    borderRadius: 8,
-    color: active ? '#3DFFC3' : 'rgba(255,255,255,0.7)',
+    background: active ? 'rgba(61, 255, 195, 0.12)' : 'transparent',
+    border: 'none',
+    borderRadius: 10,
+    color: active ? '#3DFFC3' : 'rgba(255,255,255,0.6)',
     cursor: 'pointer',
     fontWeight: 600,
     fontSize: 14,
+    transition: 'all 0.2s ease',
   }),
   content: {
-    padding: 24,
-    maxWidth: 900,
+    padding: 40,
+    maxWidth: 920,
     margin: '0 auto',
+  },
+  sectionHeader: {
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: '0.12em',
+    textTransform: 'uppercase' as const,
+    color: 'rgba(255,255,255,0.45)',
+    marginBottom: 12,
+    marginTop: 0,
   },
   input: {
     width: '100%',
-    padding: 12,
-    marginTop: 6,
-    background: '#282828',
-    border: '1px solid #444',
-    borderRadius: 8,
+    padding: 14,
+    marginTop: 8,
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: 12,
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 15,
+    transition: 'border-color 0.2s ease',
   },
   select: {
     width: '100%',
-    padding: 12,
-    marginTop: 6,
-    background: '#282828',
-    border: '1px solid #444',
-    borderRadius: 8,
+    padding: 14,
+    marginTop: 8,
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: 12,
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 15,
     cursor: 'pointer',
+    transition: 'border-color 0.2s ease',
   },
   label: {
     display: 'block' as const,
-    marginBottom: 4,
+    marginBottom: 6,
     fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
+    color: 'rgba(255,255,255,0.75)',
     fontWeight: 500,
   },
   btn: (variant: 'primary' | 'secondary' = 'primary') => ({
-    padding: '12px 24px',
-    borderRadius: 8,
+    padding: '14px 28px',
+    borderRadius: 12,
     fontWeight: 600,
     fontSize: 14,
     cursor: 'pointer',
-    border: variant === 'secondary' ? '1px solid #444' : 'none',
-    background: variant === 'primary' ? 'linear-gradient(135deg, #3DFFC3 0%, #A64EEB 100%)' : '#282828',
-    color: variant === 'primary' ? '#1A1A1A' : '#FFFFFF',
+    border: variant === 'secondary' ? '1px solid rgba(255,255,255,0.15)' : 'none',
+    background: variant === 'primary' ? 'linear-gradient(135deg, #3DFFC3 0%, #2dd4aa 50%, #A64EEB 100%)' : 'rgba(255,255,255,0.06)',
+    color: variant === 'primary' ? '#0a0a0a' : '#FFFFFF',
+    transition: 'all 0.2s ease',
+    boxShadow: variant === 'primary' ? '0 4px 20px rgba(61, 255, 195, 0.25)' : 'none',
   }),
   card: {
-    background: '#282828',
-    border: '1px solid #333',
-    borderRadius: 12,
-    padding: 20,
-    marginTop: 20,
+    background: 'rgba(255,255,255,0.03)',
+    border: '1px solid rgba(255,255,255,0.06)',
+    borderRadius: 16,
+    padding: 28,
+    marginTop: 24,
   },
 };
 
 export default function App() {
-  const [tab, setTab] = useState<'home' | 'payment'>('home');
+  const [tab, setTab] = useState<'home' | 'payment' | 'investments'>('home');
   const [distracted, setDistracted] = useState(false);
   const [cents, setCents] = useState(0);
   const [activeTitle, setActiveTitle] = useState('');
+  const [activeTitles, setActiveTitles] = useState<string[]>([]);
+  const [activeOwner, setActiveOwner] = useState('');
   const [solSig, setSolSig] = useState<string | null>(null);
   const [explorer, setExplorer] = useState<string | null>(null);
 
@@ -139,24 +159,55 @@ export default function App() {
   const [displayBlacklist, setDisplayBlacklist] = useState<string[]>([]);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [totalPausedMs, setTotalPausedMs] = useState(0);
+  const pausedAtRef = useRef<number | null>(null);
+  const [totalEarningsCents, setTotalEarningsCents] = useState(() => {
+    try {
+      return parseInt(localStorage.getItem(TOTAL_EARNINGS_KEY) || '0', 10);
+    } catch { return 0; }
+  });
+  const [solPrice, setSolPrice] = useState<number | null>(null);
 
   const feePerMin = selectedPaymentAmount;
 
-  // Timer: update every second while session is running
+  // Fetch SOL price every 5 minutes
+  useEffect(() => {
+    const fetchSolPrice = async () => {
+      try {
+        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+        const data = await res.json();
+        if (data?.solana?.usd) setSolPrice(data.solana.usd);
+      } catch { /* ignore */ }
+    };
+    fetchSolPrice();
+    const interval = setInterval(fetchSolPrice, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Timer: update every second while session is running (frozen when paused)
   useEffect(() => {
     if (!sessionRunning || sessionStartTime === null) return;
     const interval = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - sessionStartTime) / 1000));
+      const now = Date.now();
+      const elapsed = paused && pausedAtRef.current
+        ? (pausedAtRef.current - sessionStartTime - totalPausedMs) / 1000
+        : (now - sessionStartTime - totalPausedMs) / 1000;
+      setElapsedSeconds(Math.floor(Math.max(0, elapsed)));
     }, 1000);
     return () => clearInterval(interval);
-  }, [sessionRunning, sessionStartTime]);
+  }, [sessionRunning, sessionStartTime, paused, totalPausedMs]);
 
   useEffect(() => {
     window.focusFee.onTick((d) => {
       setDistracted(d.distracted);
       setCents(d.centsOwed);
       setActiveTitle(d.activeTitle);
+      if (d.activeTitles) setActiveTitles(d.activeTitles);
+      else if (d.activeTitle) setActiveTitles([d.activeTitle]);
+      if (d.activeOwner !== undefined) setActiveOwner(d.activeOwner);
       if (d.blacklist) setDisplayBlacklist(d.blacklist);
+      if (d.paused !== undefined) setPaused(d.paused);
     });
   }, []);
 
@@ -172,6 +223,8 @@ export default function App() {
     setSessionRunning(true);
     setSessionStartTime(Date.now());
     setElapsedSeconds(0);
+    setTotalPausedMs(0);
+    pausedAtRef.current = null;
   }
 
   function handleAddFunds() {
@@ -195,7 +248,12 @@ export default function App() {
   async function stopAndSettle() {
     setSessionRunning(false);
     setSessionStartTime(null);
+    setTotalPausedMs(0);
+    pausedAtRef.current = null;
     const { centsOwed } = await window.focusFee.stop();
+    const newTotal = totalEarningsCents + centsOwed;
+    setTotalEarningsCents(newTotal);
+    try { localStorage.setItem(TOTAL_EARNINGS_KEY, String(newTotal)); } catch { /* ignore */ }
     if (!solanaAddress) {
       alert('Enter your Solana (devnet) address first.');
       return;
@@ -215,12 +273,12 @@ export default function App() {
   return (
     <div style={styles.app}>
       <header style={styles.header}>
-        <img src="/logo.png" alt="Focus Fee" style={{ height: 48, objectFit: 'contain', background: '#000', padding: '8px 12px', borderRadius: 8 }} />
+        <img src="/logo.png" alt="Focus Fee" style={styles.logo} />
+        <div style={{ flex: 1, minWidth: 16 }} />
         {sessionRunning && (
           <>
             <span
               style={{
-                marginLeft: 'auto',
                 padding: '6px 12px',
                 borderRadius: 8,
                 fontSize: 14,
@@ -237,25 +295,36 @@ export default function App() {
                 borderRadius: 8,
                 fontSize: 13,
                 fontWeight: 600,
-                background: distracted ? 'rgba(229, 57, 53, 0.2)' : 'rgba(61, 255, 195, 0.15)',
-                color: distracted ? '#FF6B6B' : '#3DFFC3',
-                border: `1px solid ${distracted ? '#E53935' : '#3DFFC3'}`,
+                background: paused ? 'rgba(255,193,7,0.15)' : distracted ? 'rgba(229, 57, 53, 0.2)' : 'rgba(61, 255, 195, 0.15)',
+                color: paused ? '#FFC107' : distracted ? '#FF6B6B' : '#3DFFC3',
+                border: `1px solid ${paused ? '#FFC107' : distracted ? '#E53935' : '#3DFFC3'}`,
               }}
             >
-              {distracted ? '🚫 Unfocused' : '✅ Focused'}
+              {paused ? '⏸ Paused' : distracted ? '🚫 Unfocused' : '✅ Focused'}
             </span>
           </>
         )}
         <nav style={styles.tabs}>
           <button style={styles.tab(tab === 'home')} onClick={() => setTab('home')}>Homepage</button>
           <button style={styles.tab(tab === 'payment')} onClick={() => setTab('payment')}>Payment</button>
+          <button style={styles.tab(tab === 'investments')} onClick={() => setTab('investments')}>Investments</button>
         </nav>
       </header>
 
       <main style={styles.content}>
         {tab === 'home' && (
           <>
-            <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <header style={{ marginBottom: 40 }}>
+              <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #3DFFC3 0%, #A64EEB 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                Focus Session
+              </h1>
+              <p style={{ marginTop: 8, fontSize: 15, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
+                Stay on task. Get charged when you're distracted by blacklisted apps.
+              </p>
+            </header>
+
+            <h2 style={styles.sectionHeader}>Setup</h2>
+            <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
               <div>
                 <label style={styles.label}>Solana address (devnet)</label>
                 <input
@@ -294,21 +363,48 @@ export default function App() {
                   value={blacklistText}
                   onChange={e => setBlacklistText(e.target.value)}
                   style={styles.input}
+                  placeholder="YouTube, Twitter, Steam, Instagram..."
                 />
               </div>
             </section>
 
-            <div style={{ marginTop: 20 }}>
+            <h2 style={{ ...styles.sectionHeader, marginTop: 32 }}>Session</h2>
+            <div style={{ marginTop: 12, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               <button
                 onClick={startSession}
-                style={{ ...styles.btn('primary'), marginRight: 12 }}
+                style={{ ...styles.btn('primary') }}
+                disabled={sessionRunning}
               >
                 Start Session
               </button>
-              <button onClick={stopAndSettle} style={styles.btn('secondary')}>Stop & Settle</button>
+              {sessionRunning && (
+                <button
+                  onClick={paused
+                    ? () => {
+                        const now = Date.now();
+                        if (pausedAtRef.current) setTotalPausedMs(prev => prev + (now - pausedAtRef.current!));
+                        pausedAtRef.current = null;
+                        setPaused(false);
+                        window.focusFee.resume();
+                      }
+                    : () => {
+                        pausedAtRef.current = Date.now();
+                        setPaused(true);
+                        window.focusFee.pause();
+                      }
+                  }
+                  style={styles.btn('secondary')}
+                >
+                  {paused ? '▶ Resume' : '⏸ Pause'}
+                </button>
+              )}
+              <button onClick={stopAndSettle} style={styles.btn('secondary')} disabled={!sessionRunning}>
+                Stop & Settle
+              </button>
             </div>
 
-            <div style={{ ...styles.card, marginTop: 20 }}>
+            <h2 style={{ ...styles.sectionHeader, marginTop: 40 }}>Status</h2>
+            <div style={styles.card}>
               {sessionRunning && (
                 <>
                   <div style={{ fontSize: 28, fontWeight: 700, fontVariantNumeric: 'tabular-nums', marginBottom: 16 }}>
@@ -321,21 +417,46 @@ export default function App() {
                   )}
                 </>
               )}
-              <div>Active window: <b>{activeTitle || '—'}</b></div>
-              <div style={{ marginTop: 16 }}>Status: {distracted ? '🚫 Unfocused' : '✅ Focused'}</div>
-              <div style={{ marginTop: 8 }}>Running tab: <b>${(cents / 100).toFixed(2)}</b></div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>
+                    {activeTitles.length > 1 ? 'Active windows (split screen)' : 'Active window'}
+                  </span>
+                  <div style={{ marginTop: 4, fontWeight: 500 }}>
+                    {activeTitles.length > 1
+                      ? activeTitles.map((t, i) => <div key={i} style={{ marginBottom: i < activeTitles.length - 1 ? 6 : 0 }}>{t}</div>)
+                      : (activeTitles[0] || activeTitle || '—')}
+                  </div>
+                  {activeOwner && (
+                    <div style={{ marginTop: 4, fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>App: {activeOwner}</div>
+                  )}
+                </div>
+                <div>
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Status</span>
+                  <div style={{ marginTop: 4, fontWeight: 600, color: distracted ? '#FF6B6B' : '#3DFFC3' }}>
+                    {distracted ? '🚫 Unfocused' : '✅ Focused'}
+                  </div>
+                </div>
+                <div>
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Running tab</span>
+                  <div style={{ marginTop: 4, fontSize: 20, fontWeight: 700 }}>${(cents / 100).toFixed(2)}</div>
+                </div>
+              </div>
             </div>
 
             {solSig && (
-              <div style={{ ...styles.card, marginTop: 16, borderColor: '#3DFFC3' }}>
-                <div>Invested! Tx Signature: <code>{solSig}</code></div>
-                {explorer && <div><a href={explorer} target="_blank" rel="noreferrer">View on Solana Explorer ↗</a></div>}
+              <div style={{ ...styles.card, marginTop: 24, borderColor: 'rgba(61, 255, 195, 0.3)', background: 'rgba(61, 255, 195, 0.05)' }}>
+                <h3 style={{ marginTop: 0, marginBottom: 12, fontSize: 14, fontWeight: 600, color: '#3DFFC3' }}>Invested</h3>
+                <div style={{ fontSize: 13, wordBreak: 'break-all' }}><code style={{ background: 'rgba(0,0,0,0.3)', padding: '4px 8px', borderRadius: 6 }}>{solSig}</code></div>
+                {explorer && <div style={{ marginTop: 12 }}><a href={explorer} target="_blank" rel="noreferrer" style={{ fontSize: 14 }}>View on Solana Explorer ↗</a></div>}
               </div>
             )}
 
-            <p style={{ marginTop: 24, color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>
-              Privacy: only window titles are read to detect distractions.
-            </p>
+            <footer style={{ marginTop: 48, paddingTop: 24, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <p style={{ margin: 0, color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>
+                Privacy: only window titles are read to detect distractions.
+              </p>
+            </footer>
           </>
         )}
 
@@ -344,7 +465,8 @@ export default function App() {
             style={{
               position: 'fixed',
               inset: 0,
-              background: 'rgba(0,0,0,0.7)',
+              background: 'rgba(0,0,0,0.75)',
+              backdropFilter: 'blur(8px)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -354,12 +476,12 @@ export default function App() {
           >
             <div
               style={{
-                background: '#282828',
-                border: '1px solid #444',
-                borderRadius: 12,
-                padding: 24,
-                maxWidth: 360,
-                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                background: 'linear-gradient(180deg, #1e1e1e 0%, #161616 100%)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 16,
+                padding: 28,
+                maxWidth: 380,
+                boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
               }}
               onClick={e => e.stopPropagation()}
             >
@@ -382,16 +504,16 @@ export default function App() {
           <div
             style={{
               position: 'fixed',
-              bottom: 24,
+              bottom: 32,
               left: '50%',
               transform: 'translateX(-50%)',
-              padding: '14px 24px',
-              background: 'linear-gradient(135deg, #3DFFC3 0%, #A64EEB 100%)',
-              color: '#1A1A1A',
-              borderRadius: 12,
+              padding: '16px 28px',
+              background: 'linear-gradient(135deg, #3DFFC3 0%, #2dd4aa 50%, #A64EEB 100%)',
+              color: '#0a0a0a',
+              borderRadius: 14,
               fontWeight: 600,
               fontSize: 14,
-              boxShadow: '0 4px 20px rgba(61, 255, 195, 0.3)',
+              boxShadow: '0 8px 32px rgba(61, 255, 195, 0.35)',
               zIndex: 1000,
             }}
           >
@@ -400,14 +522,19 @@ export default function App() {
         )}
 
         {tab === 'payment' && (
-          <section style={styles.card}>
-            <h2 style={{ marginTop: 0, marginBottom: 20, fontSize: 18 }}>Payment</h2>
+          <>
+            <header style={{ marginBottom: 40 }}>
+              <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #3DFFC3 0%, #A64EEB 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                Payment
+              </h1>
+              <p style={{ marginTop: 8, fontSize: 15, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
+                Add funds to your balance. Minimum $10. Placeholder only — no real transactions.
+              </p>
+            </header>
 
-            <p style={{ marginBottom: 16, color: 'rgba(255,255,255,0.6)', fontSize: 14 }}>
-              Add funds (minimum $10). Placeholder only — no real transactions.
-            </p>
-
-            <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+            <section style={styles.card}>
+            <h2 style={{ ...styles.sectionHeader, marginTop: 0 }}>Payment method</h2>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input type="radio" name="paymentMethod" checked={paymentMethod === 'credit'} onChange={() => handlePaymentMethodChange('credit')} />
                 Credit Card
@@ -418,8 +545,9 @@ export default function App() {
               </label>
             </div>
 
+            <h2 style={{ ...styles.sectionHeader, marginTop: 24 }}>{paymentMethod === 'credit' ? 'Card details' : 'Bank details'}</h2>
             {paymentMethod === 'credit' ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
                 <div>
                   <label style={styles.label}>Card number</label>
                   <input type="text" value={cardNumber} onChange={e => setCardNumber(e.target.value)} placeholder="1234 5678 9012 3456" style={styles.input} />
@@ -438,7 +566,7 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
                 <div>
                   <label style={styles.label}>Account number</label>
                   <input type="text" value={accountNumber} onChange={e => setAccountNumber(e.target.value)} placeholder="Account number" style={styles.input} />
@@ -450,7 +578,8 @@ export default function App() {
               </div>
             )}
 
-            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <h2 style={{ ...styles.sectionHeader, marginTop: 24 }}>Add funds</h2>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div>
                 <label style={styles.label}>Amount to add ($)</label>
                 <input
@@ -465,11 +594,63 @@ export default function App() {
               <button onClick={handleAddFunds} style={styles.btn('primary')}>Add funds</button>
             </div>
 
-            <div style={{ marginTop: 20, padding: 16, background: '#1A1A1A', borderRadius: 8 }}>
-              <div><strong>Balance:</strong> ${balance.toFixed(2)}</div>
-              <div style={{ marginTop: 8 }}><strong>Withdrawn this session:</strong> ${(cents / 100).toFixed(2)}</div>
+            <h2 style={{ ...styles.sectionHeader, marginTop: 28 }}>Balance</h2>
+            <div style={{ marginTop: 12, padding: 20, background: 'rgba(0,0,0,0.3)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: 'rgba(255,255,255,0.6)' }}>Balance</span>
+                <span style={{ fontSize: 18, fontWeight: 700 }}>${balance.toFixed(2)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <span style={{ color: 'rgba(255,255,255,0.6)' }}>Withdrawn this session</span>
+                <span style={{ fontWeight: 600 }}>${(cents / 100).toFixed(2)}</span>
+              </div>
             </div>
           </section>
+          </>
+        )}
+
+        {tab === 'investments' && (
+          <>
+            <header style={{ marginBottom: 40 }}>
+              <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #3DFFC3 0%, #A64EEB 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                Investments
+              </h1>
+              <p style={{ marginTop: 8, fontSize: 15, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
+                Total earnings from focus fees, converted to SOL at current market price.
+              </p>
+            </header>
+
+            <section style={styles.card}>
+              <h2 style={{ ...styles.sectionHeader, marginTop: 0 }}>Total earnings</h2>
+              <div style={{ fontSize: 36, fontWeight: 700, marginBottom: 8 }}>
+                ${(totalEarningsCents / 100).toFixed(2)}
+              </div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
+                All-time focus fees collected
+              </div>
+
+              <h2 style={{ ...styles.sectionHeader, marginTop: 32 }}>Solana value</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', background: 'rgba(0,0,0,0.3)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span style={{ color: 'rgba(255,255,255,0.7)' }}>SOL price (USD)</span>
+                  <span style={{ fontWeight: 600 }}>
+                    {solPrice != null ? `$${solPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}` : 'Loading...'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', background: 'rgba(0,0,0,0.3)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span style={{ color: 'rgba(255,255,255,0.7)' }}>Your earnings in SOL</span>
+                  <span style={{ fontWeight: 600, fontSize: 18 }}>
+                    {solPrice != null && solPrice > 0
+                      ? `${(totalEarningsCents / 100 / solPrice).toFixed(6)} SOL`
+                      : '—'}
+                  </span>
+                </div>
+              </div>
+              <p style={{ marginTop: 20, marginBottom: 0, fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>
+                SOL price updates every 5 minutes via CoinGecko.
+              </p>
+            </section>
+          </>
         )}
       </main>
     </div>

@@ -7,9 +7,10 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('focusFee', {
   start: (payload: { blacklist: string[]; feePerMin: number }) =>
-    ipcRenderer.invoke('session:start', payload),       // payload contains blacklist and feePerMin
-  stop: () =>
-    ipcRenderer.invoke('session:stop'),         // returns { centsOwed: number }
-  onTick: (cb: (data: { distracted: boolean; centsOwed: number; activeTitle: string }) => void) =>      
-    ipcRenderer.on('tick', (_e, d) => cb(d)),       // d contains { distracted, centsOwed, activeTitle }
+    ipcRenderer.invoke('session:start', payload),
+  pause: () => ipcRenderer.invoke('session:pause'),
+  resume: () => ipcRenderer.invoke('session:resume'),
+  stop: () => ipcRenderer.invoke('session:stop'),
+  onTick: (cb: (data: { distracted: boolean; centsOwed: number; activeTitle: string; blacklist?: string[]; paused?: boolean }) => void) =>
+    ipcRenderer.on('tick', (_e, d) => cb(d)),
 });

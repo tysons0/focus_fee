@@ -2,32 +2,26 @@
 // Focus tracking is simulated — use the desktop app for real window detection.
 if (typeof window !== 'undefined' && !(window as any).focusFee) {
   let running = false;
+  let paused = false;
   let centsOwed = 0;
   let feePerMin = 0.25;
   let lastTick = Date.now();
   let intervalId: ReturnType<typeof setInterval> | null = null;
-  const callbacks: Array<(d: { distracted: boolean; centsOwed: number; activeTitle: string }) => void> = [];
+  const callbacks: Array<(d: { distracted: boolean; centsOwed: number; activeTitle: string; paused?: boolean }) => void> = [];
 
   const tick = () => {
     const now = Date.now();
     const elapsedMin = (now - lastTick) / 60000;
     lastTick = now;
-    // Browser cannot detect other windows — always show focused. Use desktop app for real detection.
     const distracted = false;
-    if (distracted) {
-      centsOwed += Math.ceil(elapsedMin * feePerMin * 100);
-    }
-    const payload = {
-      distracted,
-      centsOwed,
-      activeTitle: running ? 'Browser (use desktop app for real window detection)' : '—'
-    };
-    callbacks.forEach(cb => cb(payload));
+    if (distracted && !paused) centsOwed += Math.ceil(elapsedMin * feePerMin * 100);
+    callbacks.forEach(cb => cb({ distracted, centsOwed, activeTitle: running ? 'Browser (use desktop app)' : '—', activeTitles: running ? ['Browser (use desktop app)'] : [], activeOwner: '', paused }));
   };
 
   (window as any).focusFee = {
     start: async (p: { blacklist: string[]; feePerMin: number }) => {
       running = true;
+      paused = false;
       centsOwed = 0;
       feePerMin = p.feePerMin;
       lastTick = Date.now();
@@ -35,13 +29,16 @@ if (typeof window !== 'undefined' && !(window as any).focusFee) {
       tick();
       return { ok: true };
     },
+    pause: async () => { paused = true; return { ok: true }; },
+    resume: async () => { paused = false; lastTick = Date.now(); return { ok: true }; },
     stop: async () => {
       running = false;
+      paused = false;
       if (intervalId) clearInterval(intervalId);
       intervalId = null;
       return { centsOwed };
     },
-    onTick: (cb: (d: { distracted: boolean; centsOwed: number; activeTitle: string }) => void) => {
+    onTick: (cb: (d: { distracted: boolean; centsOwed: number; activeTitle: string; paused?: boolean }) => void) => {
       callbacks.push(cb);
       tick();
     }

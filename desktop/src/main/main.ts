@@ -8,6 +8,7 @@ let mainWindow: BrowserWindow | null = null;
 
 type SessionState = {       // state of the current focus session
   running: boolean;
+  paused: boolean;
   blacklist: string[];
   centsOwed: number;
   feePerMin: number; // $/minute, e.g. 0.25
@@ -15,6 +16,7 @@ type SessionState = {       // state of the current focus session
 };
 const state: SessionState = {       //initial state of session
   running: false,
+  paused: false,
   blacklist: ['youtube', 'twitter', 'instagram', 'steam'],
   centsOwed: 0,
   feePerMin: 0.25,
@@ -69,34 +71,37 @@ function windowMatchesBlacklist(win: { title?: string; owner?: { name?: string }
   return blacklist.some(b => title.includes(b) || ownerName.includes(b));
 }
 
-// Use getOpenWindows only (front-to-back order) — single source of truth avoids race with activeWin()
-// Debounce: require 2 consecutive ticks of same state to prevent flickering
+// Use activeWin() for the focused window (most reliable) + getOpenWindows for split screen and blacklist check
 setInterval(async () => {
   if (!state.running || !mainWindow) return;
   try {
-    const openWindows = await (activeWin.getOpenWindows?.() ?? Promise.resolve([]));
-    const win = Array.isArray(openWindows) && openWindows.length > 0 ? openWindows[0] : null;
+    const [activeWindow, openWindows] = await Promise.all([
+      activeWin(),
+      activeWin.getOpenWindows?.() ?? Promise.resolve([]),
+    ]);
+    const win = activeWindow ?? (Array.isArray(openWindows) && openWindows.length > 0 ? openWindows[0] : null);
+    const win2 = Array.isArray(openWindows) && openWindows.length > 1 ? openWindows[1] : null;
 
     const now = Date.now();
     const elapsedMin = (now - state.lastCheck) / 60000;
 
-    // Fees ONLY when BOTH: (1) a blacklisted app is open, AND (2) you're focused on it
-    const blacklistAppIsOpen = Array.isArray(openWindows) && openWindows.some((w: any) => windowMatchesBlacklist(w, state.blacklist));
+    // Fees when focused on blacklisted app (or it's visible in split screen)
+    const blacklistAppIsOpen = Array.isArray(openWindows) && openWindows.length > 0 && openWindows.some((w: any) => windowMatchesBlacklist(w, state.blacklist));
     const activeMatches = windowMatchesBlacklist(win, state.blacklist);
+    const secondMatches = windowMatchesBlacklist(win2, state.blacklist);
     const isOwnApp = win?.owner?.name?.toLowerCase().includes('electron') || (win?.title || '').toLowerCase().includes('focus fee');
-    const rawDistracted = blacklistAppIsOpen && activeMatches && !isOwnApp;
+    const rawDistracted = !isOwnApp && (activeMatches || (secondMatches && blacklistAppIsOpen));
 
-    // Debug: log every ~15 sec (10 ticks) to avoid spam
-    if (Math.floor(now / 15000) !== Math.floor((now - 1500) / 15000)) {
-      console.log('[Focus Fee] Blacklist:', state.blacklist);
-      console.log('[Focus Fee] Active window:', win?.title || '(none)', '| Owner:', win?.owner?.name || '(none)');
-      console.log('[Focus Fee] blacklistAppIsOpen:', blacklistAppIsOpen, '| activeMatches:', activeMatches, '| isOwnApp:', isOwnApp, '| distracted:', rawDistracted);
+    // Debug: log every ~10 sec to verify detection
+    if (Math.floor(now / 10000) !== Math.floor((now - 1500) / 10000)) {
+      console.log('[Focus Fee] Active:', win?.title || '(none)', '| Owner:', win?.owner?.name || '(none)');
+      console.log('[Focus Fee] Match:', activeMatches, '| isOwn:', isOwnApp, '| distracted:', rawDistracted);
     }
 
-    // Debounce: only switch state after 3 consecutive same ticks
+    // Debounce: require 2 consecutive same ticks
     if (lastRawDistracted === rawDistracted) {
       sameCount++;
-      if (sameCount >= 3 || lastRawDistracted === null) {
+      if (sameCount >= 2 || lastRawDistracted === null) {
         displayedDistracted = rawDistracted;
       }
     } else {
@@ -105,16 +110,22 @@ setInterval(async () => {
     }
     lastRawDistracted = rawDistracted;
 
-    if (displayedDistracted) {
+    if (displayedDistracted && !state.paused) {
       state.centsOwed += Math.ceil(elapsedMin * state.feePerMin * 100);
     }
     state.lastCheck = now;
 
+    const activeTitles = win2 != null
+      ? [win?.title || '—', win2?.title || '—']
+      : [win?.title || ''];
     mainWindow.webContents.send('tick', {
       distracted: displayedDistracted,
       centsOwed: state.centsOwed,
-      activeTitle: win?.title || '',
+      activeTitle: activeTitles[0] || '',
+      activeTitles,
+      activeOwner: win?.owner?.name || '',
       blacklist: state.blacklist,
+      paused: state.paused,
     });
   } catch (e) {
     // swallow errors to keep loop alive
@@ -128,6 +139,7 @@ ipcMain.handle('session:start', (_e, payload: { blacklist: string[]; feePerMin: 
   state.centsOwed = 0;
   state.lastCheck = Date.now();
   state.running = true;
+  state.paused = false;
   lastRawDistracted = null;
   sameCount = 0;
   displayedDistracted = false;
@@ -135,7 +147,19 @@ ipcMain.handle('session:start', (_e, payload: { blacklist: string[]; feePerMin: 
   return { ok: true };
 });
 
+ipcMain.handle('session:pause', () => {
+  state.paused = true;
+  return { ok: true };
+});
+
+ipcMain.handle('session:resume', () => {
+  state.paused = false;
+  state.lastCheck = Date.now();
+  return { ok: true };
+});
+
 ipcMain.handle('session:stop', () => {      // stop session and return total cents owed
   state.running = false;
+  state.paused = false;
   return { centsOwed: state.centsOwed };
 });
