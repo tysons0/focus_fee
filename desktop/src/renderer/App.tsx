@@ -23,6 +23,8 @@ declare global {
       pause: () => Promise<{ ok: boolean }>;
       resume: () => Promise<{ ok: boolean }>;
       stop: () => Promise<{ centsOwed: number }>;
+      getSettings: () => Promise<{ blacklist?: string[] }>;
+      setBlacklist: (blacklist: string[]) => Promise<{ ok: boolean; blacklist: string[] }>;
       onTick: (cb: (d: TickPayload) => void) => void;
     };
   }
@@ -143,6 +145,9 @@ export default function App() {
   const [solanaAddress, setSolanaAddress] = useState('');
   const [selectedPaymentAmount, setSelectedPaymentAmount] = useState<number>(0.25);
   const [blacklistText, setBlacklistText] = useState('YouTube, Twitter, Steam');
+  const [lastSavedBlacklistText, setLastSavedBlacklistText] = useState('YouTube, Twitter, Steam');
+  const [blacklistHydrated, setBlacklistHydrated] = useState(false);
+  const [blacklistSaveState, setBlacklistSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [paymentMethod, setPaymentMethod] = useState<'credit' | 'direct'>('credit');
   const [addAmount, setAddAmount] = useState(10);
@@ -211,10 +216,45 @@ export default function App() {
     });
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+    window.focusFee.getSettings()
+      .then((settings) => {
+        if (!isMounted) return;
+        if (Array.isArray(settings?.blacklist) && settings.blacklist.length > 0) {
+          const saved = settings.blacklist.join(', ');
+          setBlacklistText(saved);
+          setLastSavedBlacklistText(saved);
+          setDisplayBlacklist(settings.blacklist);
+        }
+      })
+      .finally(() => {
+        if (isMounted) setBlacklistHydrated(true);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const blacklist = useMemo(
     () => blacklistText.split(',').map(s => s.trim()).filter(Boolean),
     [blacklistText]
   );
+  const isBlacklistDirty = blacklistHydrated && blacklistText.trim() !== lastSavedBlacklistText.trim();
+
+  async function saveBlacklist() {
+    setBlacklistSaveState('saving');
+    try {
+      const result = await window.focusFee.setBlacklist(blacklist);
+      const persistedText = result.blacklist.join(', ');
+      setBlacklistText(persistedText);
+      setLastSavedBlacklistText(persistedText);
+      setDisplayBlacklist(result.blacklist);
+      setBlacklistSaveState('saved');
+    } catch {
+      setBlacklistSaveState('error');
+    }
+  }
 
   async function startSession() {
     setSolSig(null);
@@ -361,10 +401,27 @@ export default function App() {
                 <label style={styles.label}>Blacklist (comma separated)</label>
                 <input
                   value={blacklistText}
-                  onChange={e => setBlacklistText(e.target.value)}
+                  onChange={e => {
+                    setBlacklistText(e.target.value);
+                    if (blacklistSaveState !== 'idle') setBlacklistSaveState('idle');
+                  }}
                   style={styles.input}
                   placeholder="YouTube, Twitter, Steam, Instagram..."
                 />
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button
+                    onClick={saveBlacklist}
+                    style={styles.btn('secondary')}
+                    disabled={!isBlacklistDirty || blacklistSaveState === 'saving'}
+                  >
+                    {blacklistSaveState === 'saving' ? 'Saving…' : 'Save Blacklist'}
+                  </button>
+                  <span style={{ fontSize: 13, color: blacklistSaveState === 'error' ? '#FF6B6B' : 'rgba(255,255,255,0.65)' }}>
+                    {blacklistSaveState === 'saved' && !isBlacklistDirty && 'Saved'}
+                    {blacklistSaveState === 'error' && 'Save failed'}
+                    {isBlacklistDirty && blacklistSaveState !== 'saving' && 'Unsaved changes'}
+                  </span>
+                </div>
               </div>
             </section>
 

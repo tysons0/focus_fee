@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('focusFee', {
   pause: () => ipcRenderer.invoke('session:pause'),
   resume: () => ipcRenderer.invoke('session:resume'),
   stop: () => ipcRenderer.invoke('session:stop'),
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  setBlacklist: (blacklist: string[]) => ipcRenderer.invoke('settings:set-blacklist', { blacklist }),
   onTick: (cb: (data: { distracted: boolean; centsOwed: number; activeTitle: string; blacklist?: string[]; paused?: boolean }) => void) =>
     ipcRenderer.on('tick', (_e, d) => cb(d)),
 });

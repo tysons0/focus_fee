@@ -2,9 +2,48 @@
 
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import activeWin from 'active-win';
 
 let mainWindow: BrowserWindow | null = null;
+const DEFAULT_BLACKLIST = ['youtube', 'twitter', 'instagram', 'steam'];
+
+function normalizeBlacklist(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const unique = new Set<string>();
+  for (const value of values) {
+    const normalized = String(value).toLowerCase().trim();
+    if (normalized) unique.add(normalized);
+  }
+  return [...unique];
+}
+
+function getSettingsPath() {
+  return path.join(app.getPath('userData'), 'focus-fee-settings.json');
+}
+
+function loadPersistedBlacklist(): string[] {
+  try {
+    const raw = fs.readFileSync(getSettingsPath(), 'utf-8');
+    const parsed = JSON.parse(raw) as { blacklist?: unknown };
+    const loaded = normalizeBlacklist(parsed?.blacklist);
+    return loaded.length > 0 ? loaded : [...DEFAULT_BLACKLIST];
+  } catch {
+    return [...DEFAULT_BLACKLIST];
+  }
+}
+
+function savePersistedBlacklist(blacklist: string[]) {
+  try {
+    fs.writeFileSync(
+      getSettingsPath(),
+      JSON.stringify({ blacklist: normalizeBlacklist(blacklist) }, null, 2),
+      'utf-8'
+    );
+  } catch {
+    // ignore write errors in dev
+  }
+}
 
 type SessionState = {       // state of the current focus session
   running: boolean;
@@ -17,7 +56,7 @@ type SessionState = {       // state of the current focus session
 const state: SessionState = {       //initial state of session
   running: false,
   paused: false,
-  blacklist: ['youtube', 'twitter', 'instagram', 'steam'],
+  blacklist: [...DEFAULT_BLACKLIST],
   centsOwed: 0,
   feePerMin: 0.25,
   lastCheck: Date.now(),
@@ -55,7 +94,10 @@ async function createWindow() {         //creates the desktop window and loads t
   });
 }
 
-app.whenReady().then(createWindow);         //lifecycle events
+app.whenReady().then(() => {
+  state.blacklist = loadPersistedBlacklist();
+  return createWindow();
+});         //lifecycle events
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
@@ -162,8 +204,20 @@ setInterval(async () => {
 }, 1500);
 
 // IPC handlers for control
+ipcMain.handle('settings:get', () => {
+  return { blacklist: state.blacklist };
+});
+
+ipcMain.handle('settings:set-blacklist', (_e, payload: { blacklist?: string[] }) => {
+  const next = normalizeBlacklist(payload?.blacklist);
+  state.blacklist = next;
+  savePersistedBlacklist(next);
+  return { ok: true, blacklist: state.blacklist };
+});
+
 ipcMain.handle('session:start', (_e, payload: { blacklist: string[]; feePerMin: number }) => {
-  state.blacklist = payload.blacklist.map(s => s.toLowerCase());
+  state.blacklist = normalizeBlacklist(payload.blacklist);
+  savePersistedBlacklist(state.blacklist);
   state.feePerMin = payload.feePerMin;
   state.centsOwed = 0;
   state.lastCheck = Date.now();

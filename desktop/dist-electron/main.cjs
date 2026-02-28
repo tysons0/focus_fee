@@ -22,13 +22,47 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var import_electron = require("electron");
 var import_node_path = __toESM(require("node:path"), 1);
+var import_node_fs = __toESM(require("node:fs"), 1);
 var import_active_win = __toESM(require("active-win"), 1);
 let mainWindow = null;
+const DEFAULT_BLACKLIST = ["youtube", "twitter", "instagram", "steam"];
+function normalizeBlacklist(values) {
+  if (!Array.isArray(values)) return [];
+  const unique = /* @__PURE__ */ new Set();
+  for (const value of values) {
+    const normalized = String(value).toLowerCase().trim();
+    if (normalized) unique.add(normalized);
+  }
+  return [...unique];
+}
+function getSettingsPath() {
+  return import_node_path.default.join(import_electron.app.getPath("userData"), "focus-fee-settings.json");
+}
+function loadPersistedBlacklist() {
+  try {
+    const raw = import_node_fs.default.readFileSync(getSettingsPath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    const loaded = normalizeBlacklist(parsed?.blacklist);
+    return loaded.length > 0 ? loaded : [...DEFAULT_BLACKLIST];
+  } catch {
+    return [...DEFAULT_BLACKLIST];
+  }
+}
+function savePersistedBlacklist(blacklist) {
+  try {
+    import_node_fs.default.writeFileSync(
+      getSettingsPath(),
+      JSON.stringify({ blacklist: normalizeBlacklist(blacklist) }, null, 2),
+      "utf-8"
+    );
+  } catch {
+  }
+}
 const state = {
   //initial state of session
   running: false,
   paused: false,
-  blacklist: ["youtube", "twitter", "instagram", "steam"],
+  blacklist: [...DEFAULT_BLACKLIST],
   centsOwed: 0,
   feePerMin: 0.25,
   lastCheck: Date.now()
@@ -56,7 +90,10 @@ async function createWindow() {
     mainWindow = null;
   });
 }
-import_electron.app.whenReady().then(createWindow);
+import_electron.app.whenReady().then(() => {
+  state.blacklist = loadPersistedBlacklist();
+  return createWindow();
+});
 import_electron.app.on("window-all-closed", () => {
   if (process.platform !== "darwin") import_electron.app.quit();
 });
@@ -140,8 +177,18 @@ setInterval(async () => {
   } catch (e) {
   }
 }, 1500);
+import_electron.ipcMain.handle("settings:get", () => {
+  return { blacklist: state.blacklist };
+});
+import_electron.ipcMain.handle("settings:set-blacklist", (_e, payload) => {
+  const next = normalizeBlacklist(payload?.blacklist);
+  state.blacklist = next;
+  savePersistedBlacklist(next);
+  return { ok: true, blacklist: state.blacklist };
+});
 import_electron.ipcMain.handle("session:start", (_e, payload) => {
-  state.blacklist = payload.blacklist.map((s) => s.toLowerCase());
+  state.blacklist = normalizeBlacklist(payload.blacklist);
+  savePersistedBlacklist(state.blacklist);
   state.feePerMin = payload.feePerMin;
   state.centsOwed = 0;
   state.lastCheck = Date.now();
