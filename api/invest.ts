@@ -1,4 +1,4 @@
-
+// API route for handling invest requests. receives amount in USD cents and recipient address, calculates SOL amount, and sends transaction from treasury to recipient.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import {
   Connection,
@@ -16,9 +16,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
+    // Ensure client sends Content-Type: application/json
     const { usdCents, toAddress } = req.body as { usdCents?: number; toAddress?: string };
-    if (!usdCents || !toAddress) {
-      return res.status(400).json({ error: 'Missing usdCents or toAddress' });
+    if (typeof usdCents !== 'number' || !toAddress) {
+      return res.status(400).json({ error: 'Missing usdCents (number) or toAddress (string)' });
     }
 
     const rpc = process.env.SOLANA_RPC_URL;
@@ -26,21 +27,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const mockPriceStr = process.env.MOCK_SOL_PRICE_USD || '100';
 
     if (!rpc || !secretJson) {
-      return res.status(500).json({ error: 'Server not configured: missing RPC or treasury secret' });
+      return res.status(500).json({ error: 'Server not configured: missing SOLANA_RPC_URL or SOL_TREASURY_SECRET' });
     }
 
     const price = Number(mockPriceStr);
+    if (!Number.isFinite(price) || price <= 0) {
+      return res.status(500).json({ error: 'Invalid MOCK_SOL_PRICE_USD' });
+    }
+
     const solAmount = (usdCents / 100) / price;
     const lamports = Math.floor(solAmount * LAMPORTS_PER_SOL);
-
     if (lamports <= 0) {
       return res.status(400).json({ error: 'Amount too small at current MOCK_SOL_PRICE_USD' });
     }
 
+    //Connect
     const connection = new Connection(rpc, 'confirmed');
-    const treasury = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(secretJson)));
-    const recipient = new PublicKey(toAddress);
 
+    //Parse treasury key
+    let secretArray: number[];
+    try {
+      secretArray = JSON.parse(secretJson) as number[];
+    } catch {
+      return res.status(500).json({ error: 'SOL_TREASURY_SECRET is not valid JSON array' });
+    }
+    const treasury = Keypair.fromSecretKey(Uint8Array.from(secretArray));
+
+    // Validate recipient
+    let recipient: PublicKey;
+    try {
+      recipient = new PublicKey(toAddress);
+    } catch {
+      return res.status(400).json({ error: 'Invalid toAddress public key' });
+    }
+
+    // Build & send tx
     const tx = new Transaction().add(SystemProgram.transfer({
       fromPubkey: treasury.publicKey,
       toPubkey: recipient,
@@ -48,12 +69,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }));
 
     const sig = await sendAndConfirmTransaction(connection, tx, [treasury]);
+
     return res.status(200).json({
       sig,
       solAmount,
       explorer: `https://explorer.solana.com/tx/${sig}?cluster=devnet`
     });
   } catch (err: any) {
+    console.error(err);
     return res.status(500).json({ error: err?.message || 'Unknown server error' });
   }
 }

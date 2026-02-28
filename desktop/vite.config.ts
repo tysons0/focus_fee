@@ -1,3 +1,5 @@
+//server config file. port settings, frontend build behavior
+
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 

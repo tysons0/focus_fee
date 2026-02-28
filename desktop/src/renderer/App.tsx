@@ -1,8 +1,10 @@
+//UI screeen and user flow for dektop app.
+//edit this for layout, labels, inputs, button behiavior, and API call handling.
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 
-// Use your Vercel backend URL from desktop/.env : VITE_BACKEND_URL=https://focusfee.vercel.app
-const BACKEND = import.meta.env.VITE_BACKEND_URL as string;
+
+const BACKEND = import.meta.env.VITE_BACKEND_URL as string;         //for Vercel backend URL from desktop/.env : VITE_BACKEND_URL=https://focusfee.vercel.app
 
 type TickPayload = {
   distracted: boolean;

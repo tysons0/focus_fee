@@ -9,7 +9,6 @@ npm install
 ```
 
 Create `desktop/.env`:
-
 ```env
 VITE_BACKEND_URL=https://your-vercel-project.vercel.app
 ```

@@ -1,8 +1,9 @@
+// main process. creates window, runs monitoring loop, and handles IPC from renderer
 
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
 import activeWin from 'active-win';
-// main process creates window, runs monitoring loop, and handles IPC from renderer
+
 let mainWindow: BrowserWindow | null = null;
 
 type SessionState = {       // state of the current focus session

@@ -8,7 +8,6 @@ From repo root:
 
 ```bash
 npm install
-npm --prefix desktop install
 ```
 
 ## 2) Configure env
@@ -17,11 +16,6 @@ npm --prefix desktop install
 
 Create `.env` in repo root:
 
-```env
-SOLANA_RPC_URL=https://api.devnet.solana.com
-SOL_TREASURY_SECRET=[1,2,3,...]
-MOCK_SOL_PRICE_USD=100
-```
 
 Notes:
 - `SOL_TREASURY_SECRET` must be the full JSON array for a devnet wallet secret key.
@@ -32,7 +26,7 @@ Notes:
 Create `desktop/.env`:
 
 ```env
-VITE_BACKEND_URL=https://your-vercel-project.vercel.app
+VITE_BACKEND_URL=https://focusfee.vercel.app
 ```
 
 ## 3) Run desktop app
