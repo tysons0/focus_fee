@@ -1,0 +1,8 @@
+//root tsconfig for desktop
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}

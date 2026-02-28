@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../src/main/preload.ts"],
+  "sourcesContent": ["import { contextBridge, ipcRenderer } from 'electron';\r\n\r\n//exposes API to renderer process. can be used to start/stop session and listen for tick events\r\ncontextBridge.exposeInMainWorld('focusFee', {\r\n  start: (payload: { blacklist: string[]; feePerMin: number }) =>\r\n    ipcRenderer.invoke('session:start', payload),       // payload contains blacklist and feePerMin\r\n  stop: () =>\r\n    ipcRenderer.invoke('session:stop'),         // returns { centsOwed: number }\r\n  onTick: (cb: (data: { distracted: boolean; centsOwed: number; activeTitle: string }) => void) =>      \r\n    ipcRenderer.on('tick', (_e, d) => cb(d)),       // d contains { distracted, centsOwed, activeTitle }\r\n});\r\n"],
+  "mappings": "AAAA,sBAA2C;AAG3C,8BAAc,kBAAkB,YAAY;AAAA,EAC1C,OAAO,CAAC,YACN,4BAAY,OAAO,iBAAiB,OAAO;AAAA;AAAA,EAC7C,MAAM,MACJ,4BAAY,OAAO,cAAc;AAAA;AAAA,EACnC,QAAQ,CAAC,OACP,4BAAY,GAAG,QAAQ,CAAC,IAAI,MAAM,GAAG,CAAC,CAAC;AAAA;AAC3C,CAAC;",
+  "names": []
+}

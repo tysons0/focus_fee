@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "dev:desktop": "npm --prefix desktop run dev",
+    "build:electron": "npm --prefix desktop run build:electron",
+    "build:desktop": "npm --prefix desktop run build"
+  },
   "engines": {
     "node": ">=18"
   },
