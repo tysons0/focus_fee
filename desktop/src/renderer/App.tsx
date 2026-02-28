@@ -5,6 +5,7 @@ import axios from 'axios';
 const BACKEND = (import.meta.env.VITE_BACKEND_URL as string) ?? (import.meta.env.DEV ? '' : 'http://localhost:3000');
 
 const PAYMENT_OPTIONS = [0.05, 0.15, 0.25, 0.5, 1] as const;
+type ThemeMode = 'dark' | 'light';
 
 type TickPayload = {
   distracted: boolean;
@@ -31,6 +32,8 @@ declare global {
 }
 
 const TOTAL_EARNINGS_KEY = 'focusFee_totalEarningsCents';
+const PROFILE_SETTINGS_KEY = 'focusFee_profileSettings';
+const THEME_MODE_KEY = 'focusFee_themeMode';
 
 const styles = {
   app: {
@@ -133,7 +136,7 @@ const styles = {
 };
 
 export default function App() {
-  const [tab, setTab] = useState<'home' | 'payment' | 'investments'>('home');
+  const [tab, setTab] = useState<'profile' | 'home' | 'payment' | 'investments'>('home');
   const [distracted, setDistracted] = useState(false);
   const [cents, setCents] = useState(0);
   const [activeTitle, setActiveTitle] = useState('');
@@ -143,6 +146,18 @@ export default function App() {
   const [explorer, setExplorer] = useState<string | null>(null);
 
   const [solanaAddress, setSolanaAddress] = useState('');
+  const [profileName, setProfileName] = useState('');
+  const [profilePictureDataUrl, setProfilePictureDataUrl] = useState('');
+  const [isProfileNameFocused, setIsProfileNameFocused] = useState(false);
+  const [profileSaveState, setProfileSaveState] = useState<'idle' | 'saved'>('idle');
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    try {
+      const stored = localStorage.getItem(THEME_MODE_KEY);
+      return stored === 'light' ? 'light' : 'dark';
+    } catch {
+      return 'dark';
+    }
+  });
   const [selectedPaymentAmount, setSelectedPaymentAmount] = useState<number>(0.25);
   const [blacklistText, setBlacklistText] = useState('YouTube, Twitter, Steam');
   const [lastSavedBlacklistText, setLastSavedBlacklistText] = useState('YouTube, Twitter, Steam');
@@ -189,6 +204,28 @@ export default function App() {
     const interval = setInterval(fetchSolPrice, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(PROFILE_SETTINGS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { profileName?: string; profilePictureDataUrl?: string; profilePictureUrl?: string; solanaAddress?: string };
+      if (typeof parsed.profileName === 'string') setProfileName(parsed.profileName);
+      if (typeof parsed.profilePictureDataUrl === 'string') setProfilePictureDataUrl(parsed.profilePictureDataUrl);
+      else if (typeof parsed.profilePictureUrl === 'string') setProfilePictureDataUrl(parsed.profilePictureUrl);
+      if (typeof parsed.solanaAddress === 'string') setSolanaAddress(parsed.solanaAddress);
+    } catch {
+      // ignore malformed profile settings
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(THEME_MODE_KEY, themeMode);
+    } catch {
+      // ignore persistence errors
+    }
+  }, [themeMode]);
 
   // Timer: update every second while session is running (frozen when paused)
   useEffect(() => {
@@ -241,6 +278,35 @@ export default function App() {
     [blacklistText]
   );
   const isBlacklistDirty = blacklistHydrated && blacklistText.trim() !== lastSavedBlacklistText.trim();
+  const profileInitial = (profileName.trim().slice(0, 1) || 'U').toUpperCase();
+
+  function saveProfileSettings() {
+    try {
+      localStorage.setItem(
+        PROFILE_SETTINGS_KEY,
+        JSON.stringify({
+          profileName: profileName.trim(),
+          profilePictureDataUrl: profilePictureDataUrl.trim(),
+          solanaAddress: solanaAddress.trim(),
+        })
+      );
+      setProfileSaveState('saved');
+    } catch {
+      setProfileSaveState('idle');
+    }
+  }
+
+  function handleProfilePictureFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = typeof reader.result === 'string' ? reader.result : '';
+      setProfilePictureDataUrl(value);
+      if (profileSaveState !== 'idle') setProfileSaveState('idle');
+    };
+    reader.readAsDataURL(file);
+  }
 
   async function saveBlacklist() {
     setBlacklistSaveState('saving');
@@ -311,9 +377,9 @@ export default function App() {
   }
 
   return (
-    <div style={styles.app}>
+    <div style={{ ...styles.app, ...(themeMode === 'light' ? { filter: 'invert(1) hue-rotate(180deg)' } : {}) }}>
       <header style={styles.header}>
-        <img src="/logo.png" alt="Focus Fee" style={styles.logo} />
+        <img src="/logo.png" alt="Focus Fee" style={{ ...styles.logo, ...(themeMode === 'light' ? { filter: 'invert(1) hue-rotate(180deg)' } : {}) }} />
         <div style={{ flex: 1, minWidth: 16 }} />
         {sessionRunning && (
           <>
@@ -348,10 +414,121 @@ export default function App() {
           <button style={styles.tab(tab === 'home')} onClick={() => setTab('home')}>Homepage</button>
           <button style={styles.tab(tab === 'payment')} onClick={() => setTab('payment')}>Payment</button>
           <button style={styles.tab(tab === 'investments')} onClick={() => setTab('investments')}>Investments</button>
+          <button style={styles.tab(tab === 'profile')} onClick={() => setTab('profile')}>Profile</button>
         </nav>
       </header>
 
       <main style={styles.content}>
+        {tab === 'profile' && (
+          <>
+            <header style={{ marginBottom: 40 }}>
+              <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #3DFFC3 0%, #A64EEB 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+                Profile
+              </h1>
+              <p style={{ marginTop: 8, fontSize: 15, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
+                Manage your profile, wallet settings, and high-contrast theme.
+              </p>
+            </header>
+
+            <section style={styles.card}>
+              <h2 style={{ ...styles.sectionHeader, marginTop: 0 }}>User profile</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                {profilePictureDataUrl ? (
+                  <img
+                    src={profilePictureDataUrl}
+                    alt="Profile"
+                    style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover', border: '1px solid rgba(255,255,255,0.15)' }}
+                  />
+                ) : (
+                  <div style={{ width: 72, height: 72, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, fontWeight: 700, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                    {profileInitial}
+                  </div>
+                )}
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 600 }}>{profileName.trim() || 'User'}</div>
+                  <div style={{ marginTop: 4, fontSize: 13, color: 'rgba(255,255,255,0.55)' }}>Personal settings</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+                <div>
+                  <label style={styles.label}>Display name</label>
+                  <input
+                    value={profileName}
+                    onChange={e => {
+                      setProfileName(e.target.value);
+                      if (profileSaveState !== 'idle') setProfileSaveState('idle');
+                    }}
+                    onFocus={() => setIsProfileNameFocused(true)}
+                    onBlur={() => setIsProfileNameFocused(false)}
+                    placeholder="Your name"
+                    style={{
+                      ...styles.input,
+                      border: isProfileNameFocused ? '1px solid rgba(255,255,255,0.35)' : '1px solid transparent',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={styles.label}>Profile picture file</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfilePictureFileChange}
+                    style={styles.input}
+                  />
+                  <div style={{ marginTop: 6, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                    Select an image from your computer. It is saved locally on this device.
+                  </div>
+                </div>
+                <div>
+                  <label style={styles.label}>Solana address (devnet)</label>
+                  <input
+                    value={solanaAddress}
+                    onChange={e => {
+                      setSolanaAddress(e.target.value);
+                      if (profileSaveState !== 'idle') setProfileSaveState('idle');
+                    }}
+                    placeholder="Your SOL address"
+                    style={styles.input}
+                  />
+                  <details style={{ marginTop: 8, fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>
+                    <summary style={{ cursor: 'pointer' }}>Add SOL to your wallet</summary>
+                    <p style={{ marginTop: 8, lineHeight: 1.5 }}>
+                      <strong>Option 1:</strong> Run <code>solana airdrop 5</code> in the terminal.
+                    </p>
+                    <p style={{ marginTop: 4, lineHeight: 1.5 }}>
+                      <strong>Option 2:</strong> Use <a href="https://faucet.solana.com" target="_blank" rel="noreferrer">Solana Web Faucet</a>.
+                    </p>
+                  </details>
+                </div>
+              </div>
+
+              <h2 style={{ ...styles.sectionHeader, marginTop: 28 }}>Theme</h2>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <button
+                  onClick={() => setThemeMode('dark')}
+                  style={{ ...styles.btn(themeMode === 'dark' ? 'primary' : 'secondary'), padding: '10px 16px' }}
+                >
+                  Black
+                </button>
+                <button
+                  onClick={() => setThemeMode('light')}
+                  style={{ ...styles.btn(themeMode === 'light' ? 'primary' : 'secondary'), padding: '10px 16px' }}
+                >
+                  White
+                </button>
+              </div>
+
+              <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button onClick={saveProfileSettings} style={styles.btn('secondary')}>Save Profile</button>
+                <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)' }}>
+                  {profileSaveState === 'saved' ? 'Saved' : 'Make changes, then save'}
+                </span>
+              </div>
+            </section>
+          </>
+        )}
+
         {tab === 'home' && (
           <>
             <header style={{ marginBottom: 40 }}>
@@ -365,25 +542,6 @@ export default function App() {
 
             <h2 style={styles.sectionHeader}>Setup</h2>
             <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-              <div>
-                <label style={styles.label}>Solana address (devnet)</label>
-                <input
-                  value={solanaAddress}
-                  onChange={e => setSolanaAddress(e.target.value)}
-                  placeholder="Your SOL address"
-                  style={styles.input}
-                />
-                <details style={{ marginTop: 8, fontSize: 13, color: 'rgba(255,255,255,0.6)' }}>
-                  <summary style={{ cursor: 'pointer' }}>Add SOL to your wallet</summary>
-                  <p style={{ marginTop: 8, lineHeight: 1.5 }}>
-                    <strong>Option 1:</strong> Run <code>solana airdrop 5</code> in the terminal.
-                  </p>
-                  <p style={{ marginTop: 4, lineHeight: 1.5 }}>
-                    <strong>Option 2:</strong> Use <a href="https://faucet.solana.com" target="_blank" rel="noreferrer">Solana Web Faucet</a>.
-                  </p>
-                </details>
-              </div>
-
               <div>
                 <label style={styles.label}>Payment amount ($/min)</label>
                 <select
