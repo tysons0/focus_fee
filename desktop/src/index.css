@@ -38,9 +38,19 @@ input, select, button {
   font-family: inherit;
 }
 
-input:focus, select:focus {
+select option {
+  background: #FFFFFF;
+  color: #000000;
+}
+
+input:focus {
   outline: none;
   border-color: rgba(61, 255, 195, 0.4) !important;
+}
+
+select:focus {
+  outline: none;
+  border-color: rgba(0, 0, 0, 0.4) !important;
 }
 
 button:hover:not(:disabled) {

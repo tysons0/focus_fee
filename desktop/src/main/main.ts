@@ -63,15 +63,41 @@ app.on('activate', () => {                  //macOS behavior: re-create window w
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-// Helper: does a window match any blacklist term? (title or app name)
+// Domain variations for common sites (window titles may show URL or site name)
+const DOMAIN_VARIATIONS: Record<string, string[]> = {
+  youtube: ['youtube', 'youtube.com', 'youtu.be', 'youtube music', 'youtube kids', 'youtube studio'],
+  twitter: ['twitter', 'twitter.com', 'x.com', 'x -'],
+  x: ['x.com', 'x -'],
+  instagram: ['instagram', 'instagram.com'],
+  steam: ['steam'],
+  reddit: ['reddit', 'reddit.com'],
+  tiktok: ['tiktok', 'tiktok.com'],
+  netflix: ['netflix', 'netflix.com'],
+  twitch: ['twitch', 'twitch.tv'],
+};
+
+function expandBlacklistTerms(terms: string[]): string[] {
+  const expanded = new Set<string>();
+  for (const t of terms) {
+    const key = t.toLowerCase().trim();
+    const variations = DOMAIN_VARIATIONS[key];
+    if (variations) variations.forEach(v => expanded.add(v));
+    else expanded.add(key);
+  }
+  return [...expanded];
+}
+
+// Match window title or app name against blacklist (detects webpage from browser window title)
 function windowMatchesBlacklist(win: { title?: string; owner?: { name?: string } } | null | undefined, blacklist: string[]): boolean {
   if (!win) return false;
   const title = (win.title || '').toLowerCase();
   const ownerName = (win.owner?.name || '').toLowerCase();
-  return blacklist.some(b => title.includes(b) || ownerName.includes(b));
+  const terms = expandBlacklistTerms(blacklist);
+  return terms.some(b => title.includes(b) || ownerName.includes(b));
 }
 
-// Use activeWin() for the focused window (most reliable) + getOpenWindows for split screen and blacklist check
+// Goal: Use window titles to detect what webpage we're on. When user has a blacklisted
+// site full screen (e.g. YouTube), detect it → show "Unfocused" → charge fees.
 setInterval(async () => {
   if (!state.running || !mainWindow) return;
   try {
@@ -89,7 +115,9 @@ setInterval(async () => {
     const blacklistAppIsOpen = Array.isArray(openWindows) && openWindows.length > 0 && openWindows.some((w: any) => windowMatchesBlacklist(w, state.blacklist));
     const activeMatches = windowMatchesBlacklist(win, state.blacklist);
     const secondMatches = windowMatchesBlacklist(win2, state.blacklist);
-    const isOwnApp = win?.owner?.name?.toLowerCase().includes('electron') || (win?.title || '').toLowerCase().includes('focus fee');
+    const titleLower = (win?.title || '').toLowerCase();
+    const ownerLower = (win?.owner?.name || '').toLowerCase();
+    const isOwnApp = ownerLower.includes('electron') || titleLower.includes('focus fee') || titleLower.includes('focus-fee') || titleLower.includes('focusfee') || ownerLower.includes('focus fee') || ownerLower.includes('focus-fee') || ownerLower.includes('focusfee');
     const rawDistracted = !isOwnApp && (activeMatches || (secondMatches && blacklistAppIsOpen));
 
     // Debug: log every ~10 sec to verify detection
@@ -98,15 +126,16 @@ setInterval(async () => {
       console.log('[Focus Fee] Match:', activeMatches, '| isOwn:', isOwnApp, '| distracted:', rawDistracted);
     }
 
-    // Debounce: require 2 consecutive same ticks
+    // Debounce: when switching TO distracted (YouTube etc), update immediately.
+    // When switching back to focused, require 2 consecutive ticks to avoid flicker.
     if (lastRawDistracted === rawDistracted) {
       sameCount++;
-      if (sameCount >= 2 || lastRawDistracted === null) {
+      if (sameCount >= 2 || lastRawDistracted === null || rawDistracted) {
         displayedDistracted = rawDistracted;
       }
     } else {
       sameCount = 1;
-      if (lastRawDistracted === null) displayedDistracted = rawDistracted;
+      if (lastRawDistracted === null || rawDistracted) displayedDistracted = rawDistracted;
     }
     lastRawDistracted = rawDistracted;
 
