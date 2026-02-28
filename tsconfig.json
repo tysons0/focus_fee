@@ -6,6 +6,10 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
-  }
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"],         
+    "lib": ["ES2020"]           // node serverless, no DOM needed
+  },
+  "include": ["api/**/*.ts"]
 }
