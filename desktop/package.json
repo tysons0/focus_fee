@@ -6,7 +6,7 @@
   "main": "dist-electron/main.cjs",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n VITE,ESBUILD,ELECTRON -c blue,magenta,green \"vite\" \"node scripts/build-electron-watch.mjs\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER=true VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "dev": "concurrently -k -n VITE,ESBUILD,ELECTRON -c blue,magenta,green \"vite --port 5174 --strictPort\" \"node scripts/build-electron-watch.mjs\" \"wait-on tcp:5174 && cross-env VITE_DEV_SERVER=true VITE_DEV_SERVER_URL=http://localhost:5174 electron .\"",
     "dev:web": "vite",
     "build:renderer": "vite build",
     "build:electron": "node scripts/build-electron.mjs",

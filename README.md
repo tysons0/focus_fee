@@ -28,7 +28,7 @@ Copy `desktop/.env.example` to `desktop/.env`:
 - **Local dev**: `VITE_BACKEND_URL=http://localhost:3000`
 - **Production**: `VITE_BACKEND_URL=https://focusfee.vercel.app` (or your Vercel URL)
 
-## 3) Run locally (browser)
+## 3) Run locally (desktop app)
 
 From the project root, run:
 
@@ -36,9 +36,18 @@ From the project root, run:
 npm run dev
 ```
 
-Then open **http://localhost:5173** in your browser.
+This now starts:
 
-This starts the API (port 3000) and the web app (port 5173). Focus tracking is simulated in the browser; use the desktop app for real window detection.
+- API server (port 3000)
+- Electron desktop app (with Vite dev server)
+
+If you want browser-only mode instead, run:
+
+```bash
+npm run dev:browser
+```
+
+Then open **http://localhost:5173** in your browser.
 
 **Alternative (two terminals):** Run `npm run dev:api` in one terminal, then `npm run dev:web` in another. Open http://localhost:5173.
 

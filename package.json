@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "powershell -ExecutionPolicy Bypass -File run-dev.ps1",
+    "dev": "concurrently -k -n API,DESKTOP -c cyan,green \"npm run dev:api\" \"npm run dev:desktop\"",
+    "dev:browser": "powershell -ExecutionPolicy Bypass -File run-dev.ps1",
     "dev:api": "node --experimental-strip-types server.ts",
     "dev:web": "npm run dev:web --prefix desktop",
     "dev:desktop": "npm --prefix desktop run dev",
