@@ -47,7 +47,7 @@ const styles = {
     backdropFilter: 'blur(12px)',
   },
   logo: {
-    height: 72,
+    height: 96,
     objectFit: 'contain' as const,
   },
   tabs: {
