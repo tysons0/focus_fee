@@ -7,9 +7,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "types": ["node"],         
-    "lib": ["ES2020"]           // node serverless, no DOM needed
+    "types": ["node"]
   },
   "include": ["api/**/*.ts"]
 }
